@@ -1,0 +1,14 @@
+{
+  "name": "upa-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Upa! — API contracts (OpenAPI specs + shared types)",
+  "scripts": {
+    "codegen:ts": "openapi-typescript openapi/m0.openapi.yaml -o shared-contract/src/types.ts",
+    "codegen:dart": "bash scripts/codegen-dart.sh",
+    "codegen:check": "npm run codegen:ts && git diff --exit-code shared-contract/src/types.ts"
+  },
+  "dependencies": {
+    "openapi-typescript": "^7.13.0"
+  }
+}
