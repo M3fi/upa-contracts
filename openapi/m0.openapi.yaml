@@ -1,0 +1,227 @@
+openapi: 3.0.3
+info:
+  title: Upa! API (M0 — walking skeleton)
+  version: 0.0.1-m0
+  description: >
+    Contrato mínimo del corte vertical SiONo. Única fuente de verdad (ADR-01).
+    GameRenderData es solo contenido+reglas, agnóstico de plataforma (ADR-02).
+servers:
+  - url: http://localhost:3000
+paths:
+  /auth/login:
+    post:
+      summary: Login (maestro o estudiante)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthTokens' }
+        '401': { description: Credenciales inválidas }
+
+  /games:
+    post:
+      summary: Crear un juego (maestro)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateGameRequest' }
+      responses:
+        '201':
+          description: Creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Game' }
+
+  /games/{gameId}/assign:
+    post:
+      summary: Asignar un juego a un salón (maestro)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [classroomId]
+              properties:
+                classroomId: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Asignado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assignment' }
+
+  /assignments:
+    get:
+      summary: Listar asignaciones del estudiante
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Assignment' }
+
+  /games/{gameId}/render:
+    get:
+      summary: Obtener GameRenderData (agnóstico de plataforma, ADR-02)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GameRenderData' }
+
+  /sessions/{gameId}/answer:
+    post:
+      summary: Enviar respuesta; persiste player_score y publica AnswerSubmitted (ADR-03)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubmitAnswerRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubmitAnswerResult' }
+
+  /leaderboard/{gameId}:
+    get:
+      summary: Ranking del juego (top N, Redis sorted set)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, default: 10 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/LeaderboardEntry' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+
+  schemas:
+    Role:
+      type: string
+      enum: [TEACHER, STUDENT, ADMIN]
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    AuthTokens:
+      type: object
+      required: [accessToken, role]
+      properties:
+        accessToken: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+
+    CreateGameRequest:
+      type: object
+      required: [templateType, title, content]
+      properties:
+        templateType: { type: string, enum: [SiONo] }
+        title: { type: string }
+        content: { $ref: '#/components/schemas/SiONoContent' }
+        rules: { $ref: '#/components/schemas/GameRules' }
+
+    SiONoContent:
+      type: object
+      required: [questions]
+      properties:
+        questions:
+          type: array
+          items:
+            type: object
+            required: [prompt, answer]
+            properties:
+              prompt: { type: string }
+              answer: { type: boolean }
+
+    GameRules:
+      type: object
+      properties:
+        timeLimitSec: { type: integer, nullable: true }
+        lives: { type: integer, nullable: true }
+        basePoints: { type: integer, default: 100 }
+
+    Game:
+      type: object
+      required: [id, templateType, title]
+      properties:
+        id: { type: string, format: uuid }
+        templateType: { type: string }
+        title: { type: string }
+
+    Assignment:
+      type: object
+      required: [id, gameId, classroomId]
+      properties:
+        id: { type: string, format: uuid }
+        gameId: { type: string, format: uuid }
+        classroomId: { type: string, format: uuid }
+        dueAt: { type: string, format: date-time, nullable: true }
+
+    GameRenderData:
+      description: Solo contenido + reglas. SIN propiedades de presentación (ADR-02).
+      type: object
+      required: [gameId, templateType, content, rules]
+      properties:
+        gameId: { type: string, format: uuid }
+        templateType: { type: string }
+        content: { $ref: '#/components/schemas/SiONoContent' }
+        rules: { $ref: '#/components/schemas/GameRules' }
+
+    SubmitAnswerRequest:
+      type: object
+      required: [questionIndex, answer, elapsedMs]
+      properties:
+        questionIndex: { type: integer }
+        answer: { type: boolean }
+        elapsedMs: { type: integer }
+
+    SubmitAnswerResult:
+      type: object
+      required: [isCorrect, scoreDelta, totalScore]
+      properties:
+        isCorrect: { type: boolean }
+        scoreDelta: { type: integer }
+        totalScore: { type: integer }
+
+    LeaderboardEntry:
+      type: object
+      required: [studentId, displayName, score, rank]
+      properties:
+        studentId: { type: string, format: uuid }
+        displayName: { type: string }
+        score: { type: integer }
+        rank: { type: integer }
